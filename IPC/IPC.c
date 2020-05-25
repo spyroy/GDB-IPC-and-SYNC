@@ -7,7 +7,18 @@
 #include <time.h>
 #include <unistd.h>
 
-enum { COUNT = 5 };
+/*
+when typing cat /proc/"process pid"/status | grep SigCgt
+(when "process pid" is the process id of the parent or child)
+on terminal while program is running, we should get:
+SigCgt:	0000000000000200
+which mean that we overloaded the signal handler 
+*/
+
+int fd[2];
+int val = 0;
+
+pipe(fd);
 
 static sig_atomic_t sig_num;
 static int counter;
@@ -19,37 +30,65 @@ static void catcher(int sig)
 
 static void child_process(void)
 {
-    struct timespec sleep = { .tv_sec = 0, .tv_nsec = 100000000 };
-
+	
+    sleep(1);
+    //send val == 0 to Parent via pipe	
+    write(fd[0], &val, sizeof(val));
+    //send signal to Parent
+    kill(getppid(), SIGUSR1); 
     while (1)
-    {   
-        pause();
-        nanosleep(&sleep, 0);
-        kill(getppid(), SIGUSR1);
-	counter++;
-	if(counter == 5)
-	   printf("Child is going to be terminated\n");
+    {
+	//recive val from Parent
+	read(fd[0], &val, sizeof(val));
+	//checks if val is not greater than 5
+	if(val < 5){
+		sleep(1);
+		//increases val and sends the new val to Parent 
+		val++;
+		write(fd[0], &val, sizeof(val));
+		kill(getppid(), SIGUSR1); 
+	}
+	else{
+	   //parent sent val == 5 so parent is going to be terminated
+	   printf("Parent is going to be terminated\n");
+	   break;
+	}
     }
+    //close pipe
+    close(fd[0]);
 }
 
 static void parent_process(pid_t pid)
 {
-    struct timespec sleep = { .tv_sec = 0, .tv_nsec = 100000000 };
-
-    for (int i = 0; i < COUNT+1; i++)
-    {
-        printf("%d\n", i);
-	counter++;
-        nanosleep(&sleep, 0);
-        kill(pid, SIGUSR1);
-        pause();
+	
+    while(1){
+	//recive val from child
+    	read(fd[1], &val, sizeof(val));
+	//prints val
+    	printf(" 	%d\n",val);
+	//checks if val is not greater than 5
+    	if(val < 5){
+		sleep(1);
+		//increases val and sends the new val to Child 
+		val++;
+		write(fd[1], &val, sizeof(val));
+    		kill(pid, SIGUSR1);
+    	}
+    	else{
+		//child sent val == 5 so he is going to be terminated
+    		printf("Child is going to be terminated\n");
+		write(fd[1], &val, sizeof(val));
+		kill(pid, SIGUSR1);
+		break;
+    	}
     }
-    printf("Parent is going to be terminated\n");
-    kill(pid, SIGTERM);
+    //close pipe
+    close(fd[1]);
 }
 
 int main(void)
 {
+    //overload signal handler
     struct sigaction SA;
     sigemptyset(&SA.sa_mask);
     SA.sa_flags = 0;
