@@ -1,7 +1,6 @@
 CC=gcc 
 AR=ar
 MAINOBJECTS=main.o
-LIBOBJECTS=power.o basicMath.o myMath.h
 FLAGS= -Wall -g 
 
 all: IPC
